@@ -1,0 +1,2 @@
+#!/bin/bash
+/usr/bin/python2 /opt/optistatus/optistatus.py
