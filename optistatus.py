@@ -1,8 +1,8 @@
+#!/usr/bin/env python2
 #
 # Optistatus 
 # @author fluffymadness
 #
-
 import wx
 import subprocess
 import time
