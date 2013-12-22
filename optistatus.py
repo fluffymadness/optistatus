@@ -3,80 +3,77 @@
 # Optistatus 
 # @author fluffymadness
 #
-import wx
 import subprocess
 import time
 import threading
+import sys
+from PyQt4 import QtGui, QtCore
 
-running = 1
-def create_menu_item(menu, label, func):
-    item = wx.MenuItem(menu, -1, label)
-    menu.Bind(wx.EVT_MENU, func, id=item.GetId())
-    menu.AppendItem(item)
-    return item
-    
-class TaskBarIcon(wx.TaskBarIcon):
+app = QtGui.QApplication(sys.argv)
+class SystemTrayIcon(QtGui.QSystemTrayIcon):	
     ALREADY_ON = 0
     TRAY_TOOLTIP = 'Optistatus'
     TRAY_ICON = '/usr/share/pixmaps/optistatus-inactive.png'
     TRAY_ICON_ACTIVE = '/usr/share/pixmaps/optistatus-active.png'
-
-    def __init__(self):
-        super(TaskBarIcon, self).__init__()
+    turnOn = QtCore.pyqtSignal() 
+    turnOff = QtCore.pyqtSignal()
+    
+    def __init__(self, parent=None):
+        self.optirunchecker = OptirunChecker(self)
+        self.connect(self.optirunchecker, self.optirunchecker.turnOn,self.turn_on)
+        self.connect(self.optirunchecker, self.optirunchecker.turnOff,self.turn_off)
+        self.optirunchecker.start()
+    
+        QtGui.QSystemTrayIcon.__init__(self, parent)
         self.set_icon(self.TRAY_ICON)
-
-    def CreatePopupMenu(self):
-        menu = wx.Menu()
-        create_menu_item(menu, 'Exit', self.on_exit)
-        return menu
-
-    def set_icon(self, path):
-        icon = wx.Icon(path, wx.BITMAP_TYPE_PNG)
-        self.SetIcon(icon, self.TRAY_TOOLTIP)
-
-    def on_exit(self, event):
-        global running
-        running = 0
-        for t in threads:
-            t.join()
-        wx.CallAfter(self.Destroy)
+        self.menu = QtGui.QMenu(parent)
+        exitAction = self.menu.addAction("Exit")
+        exitAction.triggered.connect(self.on_exit)
+        self.setContextMenu(self.menu)   
         
-class OptirunChecker(threading.Thread):
+    def on_exit(self, event):
+        self.optirunchecker.stop()
+        sys.exit(1)
+        
+    def set_icon(self, trayicon):
+        icon = QtGui.QIcon(trayicon)  
+        self.setIcon(icon)
+        
+    def turn_on(self):
+		self.set_icon(self.TRAY_ICON_ACTIVE)
+		self.ALREADY_ON = 1
+	
+    def turn_off(self):
+        self.set_icon(self.TRAY_ICON)
+        self.ALREADY_ON = 0
+        
+class OptirunChecker(QtCore.QThread):
+    running = 1
     uiObject = ""
-    def __init__(self, threadID, uiObject):
-        threading.Thread.__init__(self)
-        self.threadID = threadID
+    def __init__(self, uiObject):
+        QtCore.QThread.__init__(self, parent=app)
         self.uiObject = uiObject
-    def run(self):
-        # Get lock to synchronize threads
-        threadLock.acquire()
-        self.check_optirun()
-        # Free lock to release next thread
-        threadLock.release()
+        self.turnOn = QtCore.SIGNAL("turnOn")
+        self.turnOff = QtCore.SIGNAL("turnOff")
 
-    def check_optirun(self):
-        global running
-        while(running == 1):
+    def run(self):
+        while(self.running == 1):
             p = subprocess.Popen(["cat", "/proc/acpi/bbswitch"], stdout=subprocess.PIPE)
             out, err = p.communicate()
             if ("ON" in out):
-			    if (self.uiObject.ALREADY_ON == 0):
-			        self.uiObject.set_icon(self.uiObject.TRAY_ICON_ACTIVE)
-			        self.uiObject.ALREADY_ON = 1
+                if (self.uiObject.ALREADY_ON == 0):
+					self.emit(self.turnOn)
+
             else:
 			    if (self.uiObject.ALREADY_ON == 1):
-				    self.uiObject.set_icon(self.uiObject.TRAY_ICON)
-				    self.uiObject.ALREADY_ON = 0
+					self.emit(self.turnOff)
+				    
             time.sleep(2)    
-threadLock = threading.Lock()
-threads = []
-
-def main():
-    app = wx.PySimpleApp()
-    temp = TaskBarIcon()
-    optirunchecker = OptirunChecker(1,temp)
-    optirunchecker.start()
-    app.MainLoop()
-
+    def stop(self):
+        running = 0
+def main():    
+    trayIcon = SystemTrayIcon()
+    trayIcon.show()
+    sys.exit(app.exec_())  
 if __name__ == '__main__':
     main()
